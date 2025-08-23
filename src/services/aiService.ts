@@ -197,6 +197,16 @@ MULTI-FILE EXAMPLES:
 
   try {
     console.log(`🤖 Starting AI generation with Gemini for ${developmentMode} mode...`);
+    console.log('🔑 API Key status:', {
+      hasGeminiKey: !!GEMINI_API_KEY,
+      hasDeepseekKey: !!DEEPSEEK_API_KEY,
+      geminiKeyLength: GEMINI_API_KEY?.length || 0,
+      environment: import.meta.env.MODE || 'unknown'
+    });
+    
+    if (!GEMINI_API_KEY) {
+      throw new Error('Gemini API key not found in environment variables');
+    }
     
     const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
       method: 'POST',
@@ -226,6 +236,48 @@ MULTI-FILE EXAMPLES:
     }
 
     const data = await response.json();
+    
+    // Debug logging for production issues
+    console.log('🔍 Gemini API response structure:', {
+      hasCandidates: !!data.candidates,
+      candidatesLength: data.candidates?.length,
+      candidatesType: typeof data.candidates,
+      firstCandidate: data.candidates?.[0] ? {
+        hasContent: !!data.candidates[0].content,
+        hasParts: !!data.candidates[0].content?.parts,
+        partsLength: data.candidates[0].content?.parts?.length,
+        firstPartHasText: !!data.candidates[0].content?.parts?.[0]?.text
+      } : null,
+      rawData: JSON.stringify(data, null, 2).substring(0, 500) + '...' // First 500 chars for debugging
+    });
+    
+    // Validate Gemini API response structure
+    if (!data.candidates || !Array.isArray(data.candidates) || data.candidates.length === 0) {
+      console.error('❌ Invalid Gemini API response - no candidates:', data);
+      // Check for common error patterns
+      if (data.error) {
+        throw new Error(`Gemini API error: ${data.error.message || 'Unknown error'}`);
+      }
+      if (data.message) {
+        throw new Error(`Gemini API error: ${data.message}`);
+      }
+      throw new Error('Gemini API response missing candidates array');
+    }
+    
+    if (!data.candidates[0].content || !data.candidates[0].content.parts || !Array.isArray(data.candidates[0].content.parts) || data.candidates[0].content.parts.length === 0) {
+      console.error('❌ Invalid Gemini API response - no content parts:', data.candidates[0]);
+      // Check if the candidate has a finishReason that indicates an issue
+      if (data.candidates[0].finishReason) {
+        throw new Error(`Gemini API stopped generation with reason: ${data.candidates[0].finishReason}`);
+      }
+      throw new Error('Gemini API response missing content parts');
+    }
+    
+    if (!data.candidates[0].content.parts[0].text) {
+      console.error('❌ Invalid Gemini API response - no text in first part:', data.candidates[0].content.parts[0]);
+      throw new Error('Gemini API response missing text content');
+    }
+    
     const generatedText = data.candidates[0].content.parts[0].text;
 
     console.log('✅ AI response received, length:', generatedText.length);
